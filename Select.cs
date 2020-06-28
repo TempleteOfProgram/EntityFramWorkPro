@@ -1,6 +1,17 @@
-public async Task<List<T>> ExecutePaymentSP<T>(string nameOfStoredProc, SqlParameter[] parameters) where T : new()
+public async Task<List<T>> ExecuteStoreProcedure<T>(string nameOfStoredProc, SqlParameter paramOne = null, 
+            SqlParameter paramTwo = null, SqlParameter paramThree = null, SqlParameter paramFour = null) where T : new()
         {
+        /***
+        //using System.Data;
+        //using System.Type;
+        //using System.Reflection;
+        //using System.Data.SqlClient;
+        
+         Execute Store Procedure using 0 to 4 SqlParamer
+         @retun result of sql command
+        **/
             var result = new List<T>();
+
             using (var connection = new SqlConnection(configuration.GetConnectionString(Constants.CONNECTION_STR)))
             {
                 var cmd = new SqlCommand
@@ -9,12 +20,24 @@ public async Task<List<T>> ExecutePaymentSP<T>(string nameOfStoredProc, SqlParam
                     CommandType = CommandType.StoredProcedure,
                     CommandText = nameOfStoredProc
                 };
-                foreach(var parameter in parameters)
+                // adding sqlParameter to sqlCommand
+                if (paramOne != null)
                 {
-                    // adding sqlParameter to sqlCommand
-                    cmd.Parameters.Add(parameter);
+                    cmd.Parameters.Add(paramOne);
                 }
-                
+                if (paramTwo != null)
+                {
+                    cmd.Parameters.Add(paramTwo);
+                }
+                if (paramThree != null)
+                {
+                    cmd.Parameters.Add(paramThree);
+                }
+                if (paramFour != null)
+                {
+                    cmd.Parameters.Add(paramFour);
+                }
+
                 try
                 {
                     connection.Open();
@@ -52,6 +75,7 @@ public async Task<List<T>> ExecutePaymentSP<T>(string nameOfStoredProc, SqlParam
                 catch (Exception ex)
                 {
                     //err
+                    Console.WriteLine(ex.Message);
                 }
             }
 
