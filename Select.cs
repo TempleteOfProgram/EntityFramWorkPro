@@ -81,3 +81,28 @@ public async Task<List<T>> ExecuteStoreProcedure<T>(string nameOfStoredProc, Sql
 
             return result;
         }
+
+/***
+
+Declare @SQLQuery AS NVARCHAR(MAX)
+Declare @PaymentInstructionId as int = 1166
+Declare @Amount as int = 100
+
+SET @SQLQuery = 'select * from Payment.PaymentDetail '
+
+	BEGIN
+		if @PaymentInstructionId > 0
+			begin
+				SET @SQLQuery = @SQLQuery +  ' where ' + 'PaymentInstructionId=' +  CAST(@PaymentInstructionId as varchar(100))
+			end
+
+		if @Amount > 0
+			begin
+				SET @SQLQuery = @SQLQuery + ' AND ' + ' REPLACE(Amount, '''''''', ''^'') LIKE CONCAT(''%'', ''' + CAST(@Amount as varchar(100)) + ''' , ''%'')'
+			end
+
+		print @SQLQuery
+		exec sp_executesql @SQLQuery
+	END
+
+****/
