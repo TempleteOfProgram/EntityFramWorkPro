@@ -1,0 +1,21 @@
+@import '_admin-variables.scss';
+table {
+  width: 100%;
+}
+th.mat-sort-header-sorted {
+  color: black;
+}
+
+.input-container {
+  display: flex;
+  width: 100%;
+  margin-bottom: 15px;
+}
+.highlight {
+  background-color: #ebf2ff;
+}
+h5.search-tip {
+  padding: 3rem;
+  font-weight: 600;
+  color: $muted;
+}

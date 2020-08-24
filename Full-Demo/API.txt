@@ -1,0 +1,251 @@
+// Contoller 
+[HttpPost]
+ [Route("[action]")]
+ public async Task<IActionResult> SearchPayments([FromBody] PaymentSearchModel search)
+ {
+     var result = await paymentService.SearchPayments(search).ConfigureAwait(false);
+     return Ok(result);
+ }
+
+// Services
+private async Task<List<T>> ExecuteFilterPaymentsCommand<T>(List<int> Usertypes, List<int> PaymentCodeType, List<int> PaymentStatusType,
+             DateTime? fromDate, DateTime? toDate, bool? isScheduled, string keyword, int? tenantId, int? userId, int? userTypeId) where T : new()
+        {
+            List<T> res = new List<T>();
+
+            using (var connection = new SqlConnection(configuration.GetConnectionString(Constants.CONNECTION_STR)))
+            {
+                var cmd = new SqlCommand
+                {
+                    Connection = connection,
+                    CommandType = CommandType.StoredProcedure,
+                    CommandText = "[Payment].[usp_FilterPayments]"
+                };
+
+                if (Usertypes != null && Usertypes.Any())
+                {
+                    SqlParameter paramUserType = new SqlParameter("@UserTypeCriteria", Helper.CreateDataTableInt(Usertypes));
+                    paramUserType.SqlDbType = SqlDbType.Structured;
+                    paramUserType.TypeName = "dbo.UserType";
+                    cmd.Parameters.Add(paramUserType);
+                }
+
+                if (PaymentCodeType != null && PaymentCodeType.Any())
+                {
+                    SqlParameter paramPaymentCodeCriteria = new SqlParameter("@PaymentCodeCriteria", Helper.CreateDataTableInt(PaymentCodeType));
+                    paramPaymentCodeCriteria.SqlDbType = SqlDbType.Structured;
+                    paramPaymentCodeCriteria.TypeName = "dbo.PaymentCodeType";
+                    cmd.Parameters.Add(paramPaymentCodeCriteria);
+                }
+
+                if (PaymentStatusType != null && PaymentStatusType.Any())
+                {
+                    SqlParameter paramPaymentStatusCiteria = new SqlParameter("@PaymentStatusCiteria", Helper.CreateDataTableInt(PaymentStatusType));
+                    paramPaymentStatusCiteria.SqlDbType = SqlDbType.Structured;
+                    paramPaymentStatusCiteria.TypeName = "dbo.PaymentStatusType";
+                    cmd.Parameters.Add(paramPaymentStatusCiteria);
+                }
+
+                SqlParameter paramTenantId = new SqlParameter("@TenantId", tenantId);
+                cmd.Parameters.Add(paramTenantId);
+                SqlParameter paramFromDate = new SqlParameter("@FromDat", fromDate);
+                cmd.Parameters.Add(paramFromDate);
+                SqlParameter paramToDate = new SqlParameter("@ToDat", toDate);
+                cmd.Parameters.Add(paramToDate);
+                SqlParameter paramKeyword = new SqlParameter("@keyword", keyword);
+                cmd.Parameters.Add(paramKeyword);
+                SqlParameter paramIsScheduled = new SqlParameter("@IsScheduled", isScheduled);
+                cmd.Parameters.Add(paramIsScheduled);
+                SqlParameter paramUserId = new SqlParameter("@UserId", userId);
+                cmd.Parameters.Add(paramUserId);
+                SqlParameter paramUserTypeId = new SqlParameter("@UserTypeId", userTypeId);
+                cmd.Parameters.Add(paramUserTypeId);
+
+                connection.Open();
+                var oDr = cmd.ExecuteReader();
+
+                while (oDr.Read())
+                {
+                    T t = new T();
+
+                    for (int inc = 0; inc < oDr.FieldCount; inc++)
+                    {
+                        Type type = t.GetType();
+                        PropertyInfo prop = type.GetProperty(oDr.GetName(inc));
+
+                        if (prop != null)
+                        {
+                            var val = oDr.GetValue(inc);
+
+                            if (val != null && !val.ToString().Equals(""))
+                            {
+                                var targetType = prop.PropertyType.IsGenericType && prop.PropertyType.GetGenericTypeDefinition().Equals(typeof(Nullable<>))
+                                    ? Nullable.GetUnderlyingType(prop.PropertyType) : prop.PropertyType;
+                                val = Convert.ChangeType(val, targetType);
+                                prop.SetValue(t, val, null);
+                            }
+                        }
+                    }
+                    res.Add(t);
+                }
+                oDr.Close();
+            }
+            return await Task.Run(() => res);
+        }
+
+
+        public async Task<List<PaymentHistoryModel>> SearchPayments(PaymentSearchModel search)
+        {
+            var oResult = new List<PaymentHistoryModel>();
+
+            if (!String.IsNullOrEmpty(search.keyword))
+            {
+                search.keyword = search.keyword.Trim();
+                Match match = Regex.Match(search.keyword, "[^a-zA-Z0-9'\\s]");
+                if (String.IsNullOrEmpty(search.keyword) || match.Success)
+                {
+                    return oResult;
+                }
+                search.keyword = search.keyword.Replace("%", "");
+            }
+            else
+            {
+                search.keyword = "";
+            }
+
+            // Landlord payments search: LME-150
+            if ((search.UserTypeId.HasValue && search.UserTypeId > 0) && unitOfWork.GetRepository<User>().Any(predicate: u => u.IsActive && u.UserId == search.UserId)
+                && search.UserTypeId == (int)UserTypeEnum.Owner || search.UserTypeId == (int)UserTypeEnum.Payee || search.UserTypeId == (int)UserTypeEnum.Broker)
+            {
+                var result = await ExecuteFilterPaymentsCommand<PaymentHistoryModel>(search.UserTypes, search.PaymentCodeType, search.PaymentStatusType,
+                           search.FromDate, search.ToDate, search.IsScheduled, search.keyword, null, search.UserId, search.UserTypeId);
+                return mapper.Map<List<PaymentHistoryModel>>(result.OrderBy(a => a.PaymentDetailId));
+            }
+            // Landlord payments Pane: LME-168 
+            if (search.UserTypes != null && search.UserTypes.Any() && (search.UserTypes.Contains((int)UserTypeEnum.Payee) || search.UserTypes.Contains((int)UserTypeEnum.Broker))
+                && unitOfWork.GetRepository<User>().Any(predicate: u => u.IsActive && u.UserId == search.UserId))
+            {
+                var OwnerViewPayments = new List<PaymentHistoryModel>();
+                var PayeeViewPayments = new List<PaymentHistoryModel>();
+                var BrokerViewPayments = new List<PaymentHistoryModel>();
+                
+                if (search.UserTypes.Contains((int)UserTypeEnum.Owner))
+                {
+                    search.UserTypeId = (int)UserTypeEnum.Owner;
+                    OwnerViewPayments = await SearchPayments(search);
+                }
+                if (search.UserTypes.Contains((int)UserTypeEnum.Payee))
+                {
+                    search.UserTypeId = (int)UserTypeEnum.Payee;
+                    PayeeViewPayments = await SearchPayments(search);
+                    
+                }
+                if (search.UserTypes.Contains((int)UserTypeEnum.Broker))
+                {
+                    search.UserTypeId = (int)UserTypeEnum.Broker;
+                    BrokerViewPayments = await SearchPayments(search);
+                }
+                
+                // ------ Merging Payments By PaymentDetailsId --------//
+                var mergedPayments = new List<PaymentHistoryModel>();
+                var isOwnerHasLargerPayments = OwnerViewPayments.Count() >= PayeeViewPayments.Count() && OwnerViewPayments.Count() >= BrokerViewPayments.Count();
+                var isPayeeHasLargerPayments = PayeeViewPayments.Count() >= OwnerViewPayments.Count() && PayeeViewPayments.Count() >= BrokerViewPayments.Count();
+                var isBrokerHasLargerPayments = BrokerViewPayments.Count() >= OwnerViewPayments.Count() && BrokerViewPayments.Count() >= PayeeViewPayments.Count();
+                
+                if (isOwnerHasLargerPayments == true)
+                {
+                    mergedPayments = OwnerViewPayments;
+                    mergedPayments.AddRange(PayeeViewPayments.Where(p2 => OwnerViewPayments.All(p1 => p1.PaymentDetailId != p2.PaymentDetailId)));
+                    mergedPayments.AddRange(BrokerViewPayments.Where(p3 => OwnerViewPayments.All(p1 => p1.PaymentDetailId != p3.PaymentDetailId)));
+                }
+                if (isPayeeHasLargerPayments == true && isOwnerHasLargerPayments==false)
+                {
+                    mergedPayments = PayeeViewPayments;
+                    mergedPayments.AddRange(OwnerViewPayments.Where(p1 => PayeeViewPayments.All(p2 => p1.PaymentDetailId != p2.PaymentDetailId)));
+                    mergedPayments.AddRange(BrokerViewPayments.Where(p3 => PayeeViewPayments.All(p2 => p2.PaymentDetailId != p3.PaymentDetailId)));
+                }
+                if (isBrokerHasLargerPayments == true && isPayeeHasLargerPayments == false && isOwnerHasLargerPayments == false)
+                {
+                    mergedPayments = BrokerViewPayments;
+                    mergedPayments.AddRange(OwnerViewPayments.Where(p1 => BrokerViewPayments.All(p3 => p3.PaymentDetailId != p1.PaymentDetailId)));
+                    mergedPayments.AddRange(PayeeViewPayments.Where(p2 => BrokerViewPayments.All(p3 => p3.PaymentDetailId != p2.PaymentDetailId)));
+                }
+                //-------- End Of Merging--------//
+
+                return mapper.Map<List<PaymentHistoryModel>>(mergedPayments.OrderBy(a => a.PaymentDetailId));
+            }
+            // Tenant payments search: LME-492
+            else if (!search.UserTypeId.HasValue && search.TenantId.HasValue && search.TenantId > 0 && unitOfWork.GetRepository<Tenant>().Any(predicate: t => t.IsActive && t.TenantId == search.TenantId))
+            {
+                var result = await ExecuteFilterPaymentsCommand<PaymentHistoryModel>(search.UserTypes, search.PaymentCodeType, search.PaymentStatusType,
+                             search.FromDate, search.ToDate, search.IsScheduled, search.keyword, search.TenantId, null, null);
+                return mapper.Map<List<PaymentHistoryModel>>(result.OrderBy(a => a.PaymentDetailId));
+            }
+            else
+            {
+                return oResult;
+            }
+
+        }
+
+
+// Models
+using System;
+using System.Collections.Generic;
+
+namespace Core.Models.Landlord
+{
+    public class PaymentSearchModel
+    {
+        public int? UserId;
+
+        public string keyword { get; set; }
+        public List<int> UserTypes { get; set;}
+        public int? UserTypeId { get; set; }
+        public List<int> PaymentCodeType { get; set; }
+        public List<int> PaymentStatusType { get; set; }
+        public int? TenantId { get; set; }
+        public DateTime? FromDate { get; set; }
+        public DateTime? ToDate { get; set; }
+        public bool? IsScheduled { get; set; }
+        public int? LandLordId { get; set; }
+    }
+}
+using System;
+using System.Collections.Generic;
+using System.Text;
+
+namespace Core.Models.Payment
+{
+    public class PaymentHistoryModel
+    {
+        public int PaymentDetailId { get; set; }
+        public string WMSCaseNumber { get; set; }
+        public int? UserId { get; set; }
+        public string PaymentDate { get; set; }
+        public string PaymentStartDate { get; set; }
+        public string PaymentEndDate { get; set; }
+        public string PaymentPeriod { get; set; }
+        public decimal? Amount { get; set; }
+        public string PaymentCode { get; set; }
+        public decimal? CheckNumber { get; set; }
+        public string FirstName { get; set; }
+        public string LastName { get; set; }
+        public string LegalName { get; set; }
+        public string Payee { get; set; }
+        public string Status { get; set; }
+        public string TenantName { get; set; }
+        public string Owner { get; set; }
+        public int? OwnerId { get; set; }
+        public int? TenantId { get; set; }
+        public int? PayeeId { get; set; }
+        public bool? IsDV { get; set; }
+        public bool? IsHASA { get; set; }
+        public int? PaymentModeId { get; set; }
+        public string PaymentMode { get; set; }
+        public string BankName { get; set; }
+        public string AccountNumber { get; set; }
+        public string StreetAddress { get; set; }
+        public virtual PaymentDetailModel PaymentDetail { get; set; }
+    }
+}

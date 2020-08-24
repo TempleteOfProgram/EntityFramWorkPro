@@ -1,0 +1,215 @@
+<div *ngIf="!isLoading; else Loader">
+    <div *ngIf="hasData; else NoPayment">
+      <div class="row">
+        <div class="col-12">
+  
+          <ng-container
+            *ngTemplateOutlet="SectionTitle; context: { title: 'Payments', iconClass: 'fal fa-money-check-edit-alt'}">
+          </ng-container>
+  
+        </div>
+      </div>
+      <div>
+        <div class="row">
+          <div class="col-md-3">
+            <div class="form-group mb-0">
+              <label>&nbsp;</label>
+              <div>
+                <mat-form-field appearance="outline" class="w-100">
+                  <input matInput placeholder="Search Name, Address, Check #, etc." [formControl]="searchText" />
+                  <button mat-button matSuffix mat-icon-button aria-label="Clear"
+                    *ngIf="searchText.value && searchText.value.length>0" (click)="this.searchText.reset()">
+                    <mat-icon>close</mat-icon>
+                  </button>
+                  <span matPrefix>
+                    <mat-icon>search</mat-icon>
+                  </span>
+                </mat-form-field>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-2">
+            <div class="form-group mb-0">
+              <label>Date Range</label>
+              <mat-form-field appearance="outline" class="w-100">
+                <input matInput [formControl]="dateRange" (update)="filteredDataLoad($event, 'test')" id="keyboardDateRange" 
+                (input)="keyBoardEvent($event)" [satDatepicker]="picker"  placeholder="Start Date - End Date" readonly="true">
+                <sat-datepicker #picker [rangeMode]="true" [selectFirstDateOnClose]="true"></sat-datepicker>
+                <sat-datepicker-toggle matSuffix [for]="picker"></sat-datepicker-toggle>
+              </mat-form-field>
+            </div>
+          </div>
+          <div class="col-md-2">
+            <div class="form-groupp mb-0">
+              <label>Payment Status</label>
+              <lms-select multiple #SelectPaymentStatus [items]="paymentStatusTypes" labelBy="name"
+                selectBy="configTypeId" (update)="updatePaymentStatues($event)">
+              </lms-select>
+            </div>
+          </div>
+          <div class="col-md-2">
+            <div class="form-groupp mb-0">
+              <label>Payment Code</label>
+              <lms-select multiple #SelectPaymentCode [items]="paymentCodes" labelBy="description" selectBy="configTypeId"
+                (update)="filteredDataLoad($event, 'paymentCode')">
+              </lms-select>
+            </div>
+          </div>
+          <div class="col-md-2">
+            <div class="form-group mb-0">
+              <br><br>
+              <ng-container *ngIf="hasScheduledPayment==true; else ShowTooltip">
+                <mat-checkbox [formControl]="isScheduledPayment" [disabled]="!hasScheduledPayment"> 
+                </mat-checkbox>
+                Show Scheduled Payments
+              </ng-container>
+              <ng-template #ShowTooltip>
+                <mat-checkbox [formControl]="isScheduledPayment" mat-raised-button #tooltip="matTooltip" [disabled]="true"
+                  matTooltip="No scheduled payments." matTooltipPosition="above"
+                  aria-tooltip="disabled scheduled check box">
+                </mat-checkbox>
+                Show Scheduled Payments
+              </ng-template>
+            </div>
+          </div>
+          <div class="col-md-1">
+            <div class="form-groupp mb-0">
+              <br><br>
+              <a class="kt-link" href="javascript:;" (click)="clearAll()"> Clear All</a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <hr>
+      <div class="row">
+        <div class="col-12" *ngIf="numberOfPayments > 0">
+          <h4 class="mx-md">
+            Results ({{numberOfPayments}})
+            <button class="btn btn-sm btn-secondary ml-md" (click)="exportExcel()">
+              <b>Export</b>
+            </button>
+          </h4>
+        </div>
+      </div>
+      <div *ngIf="numberOfPayments > 0; else NoFilteredPayment">
+        <table  mat-table [dataSource]="dataSource" matSort>
+          <!-- WmsCaseNumber Column -->
+          <ng-container matColumnDef="wmsCaseNumber">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header> WMS Case # </th>
+            <td mat-cell *matCellDef="let element"> {{element.wmsCaseNumber | blank}} </td>
+          </ng-container>
+          <!-- PaymentDate Column -->
+          <ng-container matColumnDef="paymentDate">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header> Date Issued </th>
+            <td mat-cell *matCellDef="let element"> {{element.paymentDate | blank}} </td>
+          </ng-container>
+          <!-- PaymentPeriod Column -->
+          <ng-container matColumnDef="paymentPeriod">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header> Payment Period </th>
+            <td mat-cell *matCellDef="let element"> {{element.paymentPeriod}} </td>
+          </ng-container>
+          <!-- Amount Column -->
+          <ng-container matColumnDef="amount">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header> Amount </th>
+            <td mat-cell *matCellDef="let element"> {{element.amount | currency | blank}} </td>
+          </ng-container>
+          <!-- PaymentCode Column -->
+          <ng-container matColumnDef="paymentCode">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header> Payment Code </th>
+            <td mat-cell *matCellDef="let element"> {{element.paymentCode | blank}} </td>
+          </ng-container>
+          <!-- CheckNumber Column -->
+          <ng-container matColumnDef="checkNumber">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header> Check # </th>
+            <td mat-cell *matCellDef="let element"> {{element.checkNumber  | blank}} </td>
+          </ng-container>
+          <!-- Payee Column -->
+          <ng-container matColumnDef="payee">
+            <th mat-header-cell *matHeaderCellDef mat-sort-header> Payee </th>
+            <td mat-cell *matCellDef="let element">
+              <a class="kt-link" href="javascript:;" (click)="navigateToPayee(element.payeeId)">
+                {{element.payee | blank}}
+              </a>
+            </td>
+          </ng-container>
+          <!-- Status Column -->
+          <ng-container matColumnDef="status"> 
+            <th mat-header-cell *matHeaderCellDef mat-sort-header> Status </th>
+            <td mat-cell *matCellDef="let element">
+              <span class="kt-badge kt-badge--danger kt-badge--inline kt-badge--wide kt-badge--pill" *ngIf="element.color=='red'" >
+                {{element.status}}
+              </span>
+              <span class="kt-badge kt-badge--success kt-badge--inline kt-badge--wide kt-badge--pill" *ngIf="element.color=='green'" >
+                {{element.status}}
+              </span>
+              <span class="kt-badge kt-badge--warning kt-badge--inline kt-badge--wide kt-badge--pill" *ngIf="element.color=='yellow'" >
+                {{element.status}}
+              </span>
+              <span class="kt-badge kt-badge--info kt-badge--inline kt-badge--wide kt-badge--pill" *ngIf="element.color=='blue'" >
+                {{element.status}}
+              </span>
+            </td>
+          </ng-container>
+          <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
+          <tr mat-row *matRowDef="let row; columns: displayedColumns;" [ngClass]="{'highlight': (selRowIndex === row.paymentDetailId)}" (click)="openDetails(row)"></tr>
+        </table>
+        <mat-paginator lmsPaginator [length]="10" [pageSizeOptions]="paginationOptions" showFirstLastButtons (page)="$event">
+        </mat-paginator>
+      </div>
+    </div> 
+    <ng-template #NoFilteredPayment>
+      <div *ngIf="!hasScheduledPayment; else HasScheduledPayment">
+        <div class="d-flex justify-content-center text-center my-xxl">
+          <span class="flex-column">
+            <img src="assets/svg/sad filter.svg">
+            <h5 class="search-tip">Your filters produced no results. Try adjusting or clearing your filters to display better results.</h5>
+          </span>
+        </div>
+      </div>
+    </ng-template> 
+
+    <ng-template #NoPayment>
+      <div *ngIf="!hasScheduledPayment; else HasScheduledPayment">
+        <div class="d-flex justify-content-center text-center my-xxl">
+          <span class="flex-column">
+            <!-- <img src="assets/svg/sad filter.svg"> -->
+            <h5 class="search-tip">This tenant has no payments.</h5>
+          </span>
+        </div>
+      </div>
+    </ng-template>
+  </div>
+  
+  <!-- Templates: Start -->
+  <ng-template #SectionTitle let-title="title" let-iconClass="iconClass">
+    <div class="heading heading-lg">
+      <div class="title">
+        <i class={{iconClass}}></i>
+        {{title | blank}}
+      </div>
+    </div>
+  </ng-template>
+  
+  <ng-template #Loader>
+    <div class="py-xxl">
+      <loader [size]="'xl'"></loader>
+    </div>
+  </ng-template>
+  
+  <ng-template #HasScheduledPayment>
+    <div class="d-flex justify-content-center text-center my-xxl">
+      <span class="flex-column">
+        <!-- <img src="assets/svg/sad filter.svg"> -->
+        <h5 class="search-tip">This tenant has no historical payments. Select the checkbox filter to show scheduled payments.</h5>
+      </span>
+    </div>
+  </ng-template>
+  
+<sidenav-wrapper>
+  <ng-container sidenavHeader>
+    <h4>Payment Details</h4>
+  </ng-container>
+  <ng-container sidenavContent>
+    <lms-payment-details [paymentDetailId]="selectedResult?.paymentDetailId" [isOpen]="paymentDetailsPanelOpen" [isTenant]="true"></lms-payment-details>
+  </ng-container>
+</sidenav-wrapper> 
