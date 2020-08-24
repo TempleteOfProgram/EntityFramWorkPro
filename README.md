@@ -29,7 +29,7 @@ Some "dotnet" CLI:
 Some useful MSSQL CMD:
 ==============================================
 1. start MSSQL:
-    - sqlcmd -S localhost -U SA -P 'Krishcu12@'
+    - sqlcmd -S localhost -U SA -P 'K......12@'
 
 2. Create SnowDB:
     - CREATE DATABASE SnowDB
